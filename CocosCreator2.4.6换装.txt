@@ -256,7 +256,7 @@ swapeImage(spriteFrame, slotName, attachmentName, skinName = "default") {
             this._nativeSkeleton.updateRegion(attachment, medTex)
         } else {
             // 通过图片创建插槽的region
-            this.updateRegion(atta, this.makeRegionIno(spriteFrame, slotName));
+            this.updateRegion(attachment, this.makeRegionIno(spriteFrame, slotName));
         }
     } catch(e) {
         Global.error(e);
