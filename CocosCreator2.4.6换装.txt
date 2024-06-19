@@ -31,7 +31,7 @@ static bool js_cocos2dx_spine_SkeletonRenderer_updateRegion(se::State& s)
 	SE_REPORT_ERROR("wrong number of arguments: %d, was expecting %d", (int)argc, 2);
 	return false;
 }
-SE_BIND_FUNC(js_cocos2dx_spine_Skeleton_updateRegion)
+SE_BIND_FUNC(js_cocos2dx_spine_SkeletonRenderer_updateRegion)
 
 //接口实现 jsb_cocos2dx_spine_auto.cpp
 void SkeletonRenderer::updateRegion(Attachment* attachment, cocos2d::middleware::Texture2D* texture)
