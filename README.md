@@ -1,0 +1,261 @@
+CocosCreator2.4.6换装代码
+
+//绑定函数 jsb_cocos2dx_spine_auto.cpp 
+
+bool js_register_cocos2dx_spine_SkeletonRenderer(se::Object* obj)
+{
+    //.....
+    cls->defineFunction("updateRegion", _SE(js_cocos2dx_spine_Skeleton_updateRegion));
+    //.....
+}
+
+static bool js_cocos2dx_spine_Skeleton_updateRegion(se::State& s)
+{
+	spine::SkeletonRenderer* cobj = (spine::SkeletonRenderer*)s.nativeThisObject();
+	SE_PRECONDITION2(cobj, false, "js_cocos2dx_spine_SkeletonRenderer_setVertexEffectDelegate : Invalid Native Object");
+	const auto& args = s.args();
+	size_t argc = args.size();
+	CC_UNUSED bool ok = true;
+	if (argc == 2) {
+		spine::Attachment* arg0 = nullptr;
+		cocos2d::middleware::Texture2D* arg1 = nullptr;
+		ok &= seval_to_native_ptr(args[0], &arg0);
+		ok &= seval_to_native_ptr(args[1], &arg1);
+		SE_PRECONDITION2(ok, false, "js_cocos2dx_spine_Skeleton_updateRegion : Error processing arguments");
+		cobj->updateRegion(arg0, arg1);
+		return true;
+	}
+	SE_REPORT_ERROR("wrong number of arguments: %d, was expecting %d", (int)argc, 2);
+	return false;
+}
+SE_BIND_FUNC(js_cocos2dx_spine_Skeleton_updateRegion)
+
+//接口实现 jsb_cocos2dx_spine_auto.cpp
+void SkeletonRenderer::updateRegion(Attachment* attachment, cocos2d::middleware::Texture2D* texture)
+{
+	// 从 Texture2D 对象中获取原生纹理
+	Texture* nativeTexture = texture->getNativeTexture();
+	float width = nativeTexture->getWidth();
+	float height = nativeTexture->getHeight();
+	float wide = texture->getPixelsWide();
+	float high = texture->getPixelsHigh();
+
+	// 设置纹理的宽度和高度及其他属性
+	texture->setPixelsWide(width);
+	texture->setPixelsHigh(height);
+	texture->setRealTextureIndex(1);
+
+	// 处理 MeshAttachment 类型的附件
+	if (attachment->getRTTI().isExactly(MeshAttachment::rtti))
+	{
+		MeshAttachment *meshAttachment = (MeshAttachment *)attachment;
+		meshAttachment->setRegionU(0);
+		meshAttachment->setRegionV(0);
+		meshAttachment->setRegionU2(1);
+		meshAttachment->setRegionV2(1);
+		//meshAttachment->setRegionRotate(degrees!=0);
+		//meshAttachment->setRegionDegrees(degrees);
+
+		meshAttachment->setRegionWidth(wide);
+		meshAttachment->setRegionHeight(high);
+		meshAttachment->setRegionOriginalWidth(wide);
+		meshAttachment->setRegionOriginalHeight(high);
+		//meshAttachment->setRegionOffsetX(offset.x);
+		//meshAttachment->setRegionOffsetY(offset.y);
+
+		// 更新 UV 坐标
+		meshAttachment->updateUVs();
+		
+		AttachmentVertices* attachVertices = static_cast<AttachmentVertices*>(meshAttachment->getRendererObject());
+		if (attachVertices->_texture == texture)
+		{
+			CCLOG("Texture already set for MeshAttachment.");
+			return;
+		}
+
+		// 更新 MeshAttachment 的纹理
+		CC_SAFE_RELEASE(attachVertices->_texture);
+		attachVertices->_texture = texture;
+		CC_SAFE_RETAIN(texture);
+
+		// 更新顶点的 UV 坐标
+		const float* uvs = meshAttachment->getUVs().buffer();
+		V2F_T2F_C4B* vertices = attachVertices->_triangles->verts;
+		for (int i = 0; i < meshAttachment->getWorldVerticesLength() / 2; ++i)
+		{
+			vertices[i].texCoord.u = uvs[i * 2];
+			vertices[i].texCoord.v = uvs[i * 2 + 1];
+		}
+	}
+	// 处理 RegionAttachment 类型的附件
+	else if (attachment->getRTTI().isExactly(RegionAttachment::rtti))
+	{
+		RegionAttachment *regionAttachment = (RegionAttachment *)attachment;
+		// 设置 RegionAttachment 的 UV 坐标和尺寸
+		regionAttachment->setUVs(0, 0, 1, 1, false);
+		regionAttachment->setRegionWidth(wide);
+		regionAttachment->setRegionHeight(high);
+		regionAttachment->setRegionOriginalWidth(wide);
+		regionAttachment->setRegionOriginalHeight(high);
+		regionAttachment->setRegionOffsetX(0);
+		regionAttachment->setRegionOffsetY(0);
+
+		AttachmentVertices* attachVertices = static_cast<AttachmentVertices*>(regionAttachment->getRendererObject());
+		if (attachVertices->_texture == texture)
+		{
+			CCLOG("Texture already set for RegionAttachment.");
+			return;
+		}
+
+		// 更新 RegionAttachment 的纹理
+		CC_SAFE_RELEASE(attachVertices->_texture);
+		attachVertices->_texture = texture;
+		CC_SAFE_RETAIN(texture);
+
+		// 更新顶点的 UV 坐标
+		V2F_T2F_C4B* vertices = attachVertices->_triangles->verts;
+		for (int i = 0, ii = 0; i < 4; ++i, ii += 2)
+		{
+			vertices[i].texCoord.u = regionAttachment->getUVs()[ii];
+			vertices[i].texCoord.v = regionAttachment->getUVs()[ii + 1];
+		}
+
+		regionAttachment->updateOffset();
+	}
+	else
+	{
+		CCLOG("Unsupported attachment type.");
+	}
+}
+
+
+//js 部分代码 继承sp.Skeleton
+////////////////////////////////////////////////////////////////////////
+//换装逻辑
+makeRegionIno(spriteFrame, attachmentName) {
+    let texture = spriteFrame.getTexture();
+    let rect = spriteFrame.getRect();
+    let origSize = spriteFrame.getOriginalSize();
+    let offset = spriteFrame.getOffset();
+    let rotate = spriteFrame.isRotated();
+
+    let info = {
+        name: attachmentName,
+        rect: rect,
+        origSize: origSize,
+        offset: cc.v2(
+            (origSize.width - rect.width) * 0.5 + offset.x,
+            (origSize.height - rect.height) * 0.5 + offset.y
+        ),
+        degrees: rotate ? 270 : 0,
+        texture: texture,
+    };
+    return info;
+},
+
+updateRegion(attachment, regionInfo) {
+    let region = attachment.region;
+    let texture = regionInfo.texture;
+    let rect = regionInfo.rect;
+    let origSize = regionInfo.origSize;
+    let offset = regionInfo.offset;
+    let degrees = regionInfo.degrees;
+
+    region.x = rect.x;
+    region.y = rect.y;
+    region.width = rect.width;
+    region.height = rect.height;
+    region.originalWidth = origSize.width;
+    region.originalHeight = origSize.height;
+    region.offsetX = offset.x;
+    region.offsetY = offset.y;
+
+    region.rotate = degrees != 0;
+    region.degrees = degrees;
+
+    if (region.rotate) {
+        region.u = rect.x / texture.width;
+        region.v = rect.y / texture.height;
+        region.u2 = (rect.x + rect.height) / texture.width;
+        region.v2 = (rect.y + rect.width) / texture.height;
+    } else {
+        region.u = rect.x / texture.width;
+        region.v = rect.y / texture.height;
+        region.u2 = (rect.x + rect.width) / texture.width;
+        region.v2 = (rect.y + rect.height) / texture.height;
+    }
+
+    let skeletonTexture = new sp.SkeletonTexture({
+        width: texture.width,
+        height: texture.height
+    });
+    skeletonTexture.setRealTexture(texture);
+    region.texture = skeletonTexture;
+
+    if (attachment instanceof sp.spine.MeshAttachment) {
+        attachment.updateUVs()
+    } else if (attachment instanceof sp.spine.RegionAttachment) {
+        let uvs = attachment.uvs;
+        if (region.degrees == 90) {
+            uvs[2] = region.u;
+            uvs[3] = region.v2;
+            uvs[4] = region.u;
+            uvs[5] = region.v;
+            uvs[6] = region.u2;
+            uvs[7] = region.v;
+            uvs[0] = region.u2;
+            uvs[1] = region.v2;
+        } else if (region.degrees == 270) {
+            uvs[6] = region.u;
+            uvs[7] = region.v2;
+            uvs[0] = region.u;
+            uvs[1] = region.v;
+            uvs[2] = region.u2;
+            uvs[3] = region.v;
+            uvs[4] = region.u2;
+            uvs[5] = region.v2;
+        } else {
+            uvs[0] = region.u;
+            uvs[1] = region.v2;
+            uvs[2] = region.u;
+            uvs[3] = region.v;
+            uvs[4] = region.u2;
+            uvs[5] = region.v;
+            uvs[6] = region.u2;
+            uvs[7] = region.v2;
+        }
+        attachment.updateOffset();
+    }
+},
+
+//换装
+swapeImage(spriteFrame, slotName, attachmentName, skinName = "default") {
+    if (attachmentName == "") {
+        attachmentName = slotName;
+    }
+
+    try {
+        // 直接替换图片
+        const skeletonData = this.skeletonData.getRuntimeData();
+        const skin = skeletonData.findSkin(skinName);
+        // 找到骨骼的index
+        const slotindex = skeletonData.findSlotIndex(slotName);
+        // 找到需要换图的插槽
+        const attachment = skin.getAttachment(slotindex, attachmentName);
+
+        if (CC_JSB) {
+            var medTex = new middleware.Texture2D();
+            var texture = spriteFrame.getTexture();
+            medTex.setRealTextureIndex(0);
+            medTex.setPixelsHigh(texture.height);
+            medTex.setPixelsWide(texture.width);
+            medTex.setNativeTexture(texture.getImpl());
+            this._nativeSkeleton.updateRegion(attachment, medTex)
+        } else {
+            // 通过图片创建插槽的region
+            this.updateRegion(atta, this.makeRegionIno(spriteFrame, slotName));
+        }
+    } catch(e) {
+        Global.error(e);
+    }
+}
