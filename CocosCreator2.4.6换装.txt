@@ -1,4 +1,4 @@
-CocosCreator2.4.6换装代码
+CocosCreator2.4.6换装代码，原生平台暂不支持图片带旋转
 
 //绑定函数 
 //jsb_cocos2dx_spine_auto.hpp
